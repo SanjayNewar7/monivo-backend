@@ -95,7 +95,7 @@ RESPONSE:`;
     const apiKey = getNextApiKey();
     const client = new GoogleGenerativeAI(apiKey);
     // Try different models - gemini-2.0-flash is most stable
-    const model = client.getGenerativeModel({ model: "gemini-2.0-flash" });
+    const model = client.getGenerativeModel({ model: "gemini-2.5-flash" });
     
     try {
       console.log(`📤 Attempt ${attempt + 1} with Key ${API_KEYS.indexOf(apiKey) + 1}`);
