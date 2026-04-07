@@ -87,7 +87,7 @@ IMPORTANT RULES:
 1. Keep response under 150 words
 2. Be specific and reference their actual numbers
 3. Give 2-3 actionable tips
-4. End with: ⚠️ Educational advice.
+
 
 RESPONSE:`;
 
