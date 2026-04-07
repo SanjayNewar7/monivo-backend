@@ -54,6 +54,20 @@ function markKeyFailed(apiKey) {
   keyCooldown.set(apiKey, Date.now() + COOLDOWN_MS);
 }
 
+// Simple question detection
+const SIMPLE_PATTERNS = [
+  /^(hi|hello|hey|good morning|good afternoon|good evening)$/i,
+  /^what('s| is) your name/i,
+  /^who are you/i,
+  /^how are you/i,
+  /^thank(s| you)/i,
+  /^thanks/i,
+];
+
+function isSimpleQuestion(prompt) {
+  return SIMPLE_PATTERNS.some(pattern => pattern.test(prompt.trim()));
+}
+
 // Health check endpoint
 app.get('/health', (req, res) => {
   res.json({ 
@@ -65,43 +79,60 @@ app.get('/health', (req, res) => {
 
 // Chat endpoint
 app.post('/api/chat', async (req, res) => {
-  const { prompt, financialContext } = req.body;
+  const { prompt, financialContext, isRaw } = req.body;
   
-  // Build a more detailed prompt with actual user data
-  const enhancedPrompt = `You are Monivo AI, a professional financial assistant. Use the user's actual financial data to provide personalized advice.
+  let enhancedPrompt;
+  const isSimple = isRaw || isSimpleQuestion(prompt);
+  
+  if (isSimple) {
+    enhancedPrompt = `You are Monivo AI. Answer briefly (max 30 words): "${prompt}"`;
+  } else if (isRaw) {
+    enhancedPrompt = prompt;
+  } else {
+    enhancedPrompt = `<system>You are Monivo AI, a professional financial assistant.</system>
 
-USER FINANCIAL DATA:
-- Name: ${financialContext.userName}
-- Monthly Income: ${financialContext.currency}${financialContext.monthlyIncome}
-- Monthly Expenses: ${financialContext.currency}${financialContext.monthlyExpenses}
-- Monthly Savings: ${financialContext.currency}${financialContext.monthlySavings}
-- Savings Rate: ${financialContext.savingsRate}%
-- Top Spending Category: ${financialContext.topCategory} (${financialContext.currency}${financialContext.topCategoryAmount})
-- Active Budgets: ${financialContext.budgetCount} (${financialContext.budgetsExceeded} exceeded)
-- Savings Goals: ${financialContext.goalNames || 'No goals set'}
-- Goal Progress: ${financialContext.overallGoalProgress}%
+<context>
+<user>${financialContext.userName}</user>
+<income>${financialContext.currency}${financialContext.monthlyIncome}</income>
+<expenses>${financialContext.currency}${financialContext.monthlyExpenses}</expenses>
+<savings_rate>${financialContext.savingsRate}%</savings_rate>
+<top_category>${financialContext.topCategory}</top_category>
+<budgets_exceeded>${financialContext.budgetsExceeded}</budgets_exceeded>
+<goals>${financialContext.goalNames || 'No goals'}</goals>
+</context>
 
-USER QUESTION: ${prompt}
+<task>${prompt}</task>
 
-IMPORTANT RULES:
-1. Keep response under 150 words
-2. Be specific and reference their actual numbers
-3. Give 2-3 actionable tips
+<constraints>
+- Max 150 words
+- Reference actual numbers
+- Give 2-3 actionable steps
+- Be encouraging
+</constraints>
 
-
-RESPONSE:`;
+<response>`;
+  }
 
   for (let attempt = 0; attempt < API_KEYS.length; attempt++) {
     const apiKey = getNextApiKey();
     const client = new GoogleGenerativeAI(apiKey);
-    // Try different models - gemini-2.0-flash is most stable
-    const model = client.getGenerativeModel({ model: "gemini-2.5-flash" });
+    const model = client.getGenerativeModel({ model: "gemini-2.0-flash" });
     
     try {
       console.log(`📤 Attempt ${attempt + 1} with Key ${API_KEYS.indexOf(apiKey) + 1}`);
+      console.log(`   Type: ${isSimple ? 'Simple' : 'Financial'}`);
+      
       const result = await model.generateContent(enhancedPrompt);
       const response = await result.response;
-      const text = response.text();
+      let text = response.text();
+      
+      // Trim for simple questions
+      if (isSimple) {
+        const words = text.split(' ');
+        if (words.length > 50) {
+          text = words.slice(0, 40).join(' ') + '...';
+        }
+      }
       
       console.log(`✅ Success with Key ${API_KEYS.indexOf(apiKey) + 1}`);
       res.json({ 
